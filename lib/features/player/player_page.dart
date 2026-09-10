@@ -339,6 +339,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               lineIndex: _lineIndex,
               episodeIndex: _episodeIndex,
               overlay: false,
+              onlyLineIndex: _lineIndex,
+              watchedRecord: _mediaRepo?.watchRecord(
+                detail.sourceId,
+                detail.id,
+              ),
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
               onSelected: onPickEpisode,
             );
@@ -354,7 +359,30 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                 const VerticalDivider(width: 1),
                 SizedBox(
                   width: 400,
-                  child: CustomScrollView(slivers: episodeSlivers),
+                  child: CustomScrollView(
+                    slivers: [
+                      if (detail.playLines.length > 1)
+                        SliverToBoxAdapter(
+                          child: _EpisodeLineTabs(
+                            lines: detail.playLines,
+                            lineIndex: _lineIndex,
+                            overlay: false,
+                            onChanged: (index) {
+                              final line = detail.playLines[index];
+                              if (line.episodes.isEmpty) return;
+                              onPickEpisode(
+                                index,
+                                _episodeIndex.clamp(
+                                  0,
+                                  line.episodes.length - 1,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ...episodeSlivers,
+                    ],
+                  ),
                 ),
               ],
             );
@@ -390,6 +418,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                   episodeIndex: _episodeIndex,
                   overlay: false,
                   onlyLineIndex: _lineIndex,
+                  watchedRecord: _mediaRepo?.watchRecord(
+                    detail.sourceId,
+                    detail.id,
+                  ),
                   padding: EdgeInsets.fromLTRB(20, multiLine ? 8 : 10, 20, 28),
                   onSelected: onPickEpisode,
                 ),
@@ -654,7 +686,7 @@ class _NowPlayingPanel extends StatelessWidget {
     final line = detail.playLines[lineIndex];
     final episode =
         line.episodes[episodeIndex.clamp(0, line.episodes.length - 1)];
-    final meta = [detail.sourceName, line.name, episode.title].join(' · ');
+    final meta = '正在播放：${episode.title}';
     final tags = <String>[
       if ((detail.year ?? '').trim().isNotEmpty) detail.year!.trim(),
       if ((detail.category ?? '').trim().isNotEmpty) detail.category!.trim(),
@@ -762,6 +794,7 @@ List<Widget> _episodeSlivers({
   EdgeInsetsGeometry padding = EdgeInsets.zero,
   int? onlyLineIndex,
   bool showSectionTitle = true,
+  WatchRecord? watchedRecord,
 }) {
   final resolvedPadding = padding.resolve(TextDirection.ltr);
   final slivers = <Widget>[];
@@ -777,7 +810,7 @@ List<Widget> _episodeSlivers({
           ),
           child: Builder(
             builder: (context) => Text(
-              onlyLineIndex == null ? '线路与分集' : '分集',
+              '选集',
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -829,6 +862,11 @@ List<Widget> _episodeSlivers({
           return EpisodeChip(
             title: episode.title,
             selected: currentLineIndex == lineIndex && index == episodeIndex,
+            watched:
+                watchedRecord != null &&
+                watchedRecord.positionMs > 0 &&
+                watchedRecord.lineIndex == currentLineIndex &&
+                watchedRecord.episodeIndex == index,
             style: overlay
                 ? EpisodeChipStyle.overlay
                 : EpisodeChipStyle.surface,
@@ -849,7 +887,7 @@ List<Widget> _episodeSlivers({
   return slivers;
 }
 
-class _EpisodePicker extends StatefulWidget {
+class _EpisodePicker extends ConsumerStatefulWidget {
   const _EpisodePicker({
     required this.detail,
     required this.lineIndex,
@@ -865,10 +903,10 @@ class _EpisodePicker extends StatefulWidget {
   final void Function(int lineIndex, int episodeIndex) onSelected;
 
   @override
-  State<_EpisodePicker> createState() => _EpisodePickerState();
+  ConsumerState<_EpisodePicker> createState() => _EpisodePickerState();
 }
 
-class _EpisodePickerState extends State<_EpisodePicker> {
+class _EpisodePickerState extends ConsumerState<_EpisodePicker> {
   late int _activeLineIndex;
 
   @override
@@ -885,13 +923,18 @@ class _EpisodePickerState extends State<_EpisodePicker> {
   @override
   Widget build(BuildContext context) {
     final multi = widget.detail.playLines.length > 1;
-    final onlyLine = widget.overlay && multi ? _activeLineIndex : null;
+    final onlyLine = _activeLineIndex;
     final slivers = _episodeSlivers(
       detail: widget.detail,
       lineIndex: widget.lineIndex,
       episodeIndex: widget.episodeIndex,
       overlay: widget.overlay,
       onlyLineIndex: onlyLine,
+      watchedRecord: ref
+          .watch(mediaRepositoryProvider)
+          .asData
+          ?.value
+          .watchRecord(widget.detail.sourceId, widget.detail.id),
       showSectionTitle: !widget.overlay,
       padding: widget.overlay
           ? const EdgeInsets.fromLTRB(16, 8, 16, 20)
@@ -900,7 +943,23 @@ class _EpisodePickerState extends State<_EpisodePicker> {
     );
 
     if (!widget.overlay) {
-      return SafeArea(child: CustomScrollView(slivers: slivers));
+      return SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            if (multi)
+              SliverToBoxAdapter(
+                child: _EpisodeLineTabs(
+                  lines: widget.detail.playLines,
+                  lineIndex: _activeLineIndex,
+                  overlay: false,
+                  onChanged: (index) =>
+                      setState(() => _activeLineIndex = index),
+                ),
+              ),
+            ...slivers,
+          ],
+        ),
+      );
     }
 
     return SafeArea(
@@ -958,68 +1017,15 @@ class _EpisodeLineTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final primary = scheme.primary;
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: lines.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final selected = index == lineIndex;
-          final Color background;
-          final Color textColor;
-          final BoxBorder? border;
-          if (overlay) {
-            background = selected
-                ? primary.withValues(alpha: 0.12)
-                : Colors.white.withValues(alpha: 0.04);
-            textColor = selected ? Colors.white : Colors.white70;
-            border = Border.all(
-              color: selected
-                  ? primary.withValues(alpha: 0.85)
-                  : Colors.white.withValues(alpha: 0.18),
-              width: selected ? 1.5 : 1,
-            );
-          } else {
-            background = selected
-                ? scheme.primaryContainer
-                : scheme.surfaceContainerHighest;
-            textColor = selected
-                ? scheme.onPrimaryContainer
-                : scheme.onSurfaceVariant;
-            border = null;
-          }
-          return Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => onChanged(index),
-              borderRadius: BorderRadius.circular(8),
-              child: Ink(
-                decoration: BoxDecoration(
-                  color: background,
-                  borderRadius: BorderRadius.circular(8),
-                  border: border,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Text(
-                  lines[index].name,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+    return EpisodeLineSelector(
+      lineCount: lines.length,
+      lineIndex: lineIndex,
+      overlay: overlay,
+      unavailableLines: {
+        for (var i = 0; i < lines.length; i++)
+          if (lines[i].episodes.isEmpty) i,
+      },
+      onChanged: onChanged,
     );
   }
 }

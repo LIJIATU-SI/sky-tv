@@ -5,10 +5,10 @@ import '../../core/models/media_models.dart';
 import 'poster_fallback.dart';
 
 const densePosterGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 124,
+  maxCrossAxisExtent: 180,
   childAspectRatio: 0.58,
-  crossAxisSpacing: 8,
-  mainAxisSpacing: 10,
+  crossAxisSpacing: 12,
+  mainAxisSpacing: 12,
 );
 
 enum PosterMetaMode { compact, withSource }
@@ -120,7 +120,11 @@ class PosterCard extends StatelessWidget {
                     Positioned(
                       top: 6,
                       left: 6,
-                      child: _PosterBadge(label: category),
+                      right: 6,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: _PosterBadge(label: category),
+                      ),
                     ),
                   _PosterCaption(title: item.title, meta: meta),
                 ],
@@ -151,7 +155,7 @@ class ContinueWatchCard extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
-            : 118.0;
+            : 156.0;
         final progress = record.durationMs <= 0
             ? 0.0
             : (record.positionMs / record.durationMs).clamp(0.0, 1.0);
@@ -215,9 +219,9 @@ class _PosterBadge extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 10,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
-            height: 1,
+            height: 1.2,
           ),
         ),
       ),
@@ -242,7 +246,7 @@ class _PosterCaption extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.82)],
+            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.92)],
           ),
         ),
         child: Padding(
@@ -257,9 +261,9 @@ class _PosterCaption extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 13,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  height: 1.15,
+                  height: 1.25,
                 ),
               ),
               if (meta != null) ...[
@@ -269,9 +273,9 @@ class _PosterCaption extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
-                    fontSize: 11,
-                    height: 1.1,
+                    color: Colors.white.withValues(alpha: 0.90),
+                    fontSize: 14,
+                    height: 1.2,
                   ),
                 ),
               ],

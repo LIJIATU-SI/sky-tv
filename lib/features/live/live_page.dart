@@ -70,39 +70,33 @@ class _LivePageState extends ConsumerState<LivePage> {
   Widget build(BuildContext context) {
     final library = ref.watch(iptvLibraryProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('直播'),
-        actions: [
-          IconButton(
-            onPressed: () => _showSubscriptions(context),
-            icon: const Icon(Icons.playlist_play_rounded),
-            tooltip: '订阅管理',
-          ),
-          IconButton(
-            onPressed: () => _showImportDialog(context),
-            icon: const Icon(Icons.add_rounded),
-            tooltip: '导入 IPTV',
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('直播')),
       body: library.when(
         data: (data) {
-          final channels = _filterChannels(data.channels);
-          if (data.channels.isEmpty && data.subscriptions.isEmpty) {
+          final group = data.groups.contains(_group) ? _group : null;
+          final channels = filterIptvChannels(
+            data.channels,
+            group: group,
+            keyword: _keyword,
+          );
+          if (data.channels.isEmpty) {
             return EmptyState(
               icon: Icons.live_tv_rounded,
-              title: '还没有直播源',
-              message: '导入 m3u、m3u8、txt 或 JSON 订阅后即可观看。',
+              title: data.subscriptions.isEmpty ? '还没有直播源' : '还没有可观看的频道',
+              message: '添加直播源后，就可以选择频道观看。',
               action: FilledButton.icon(
-                onPressed: () => _showImportDialog(context),
+                onPressed: () => data.subscriptions.isEmpty
+                    ? _showImportDialog(context)
+                    : showLiveSourceManagement(context, ref),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('导入直播源'),
+                label: Text(data.subscriptions.isEmpty ? '添加直播源' : '管理直播源'),
               ),
             );
           }
           return LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 1000;
+              final rowHeight = liveChannelTileHeight(context);
               return RefreshIndicator(
                 onRefresh: _refreshSubscriptions,
                 child: CustomScrollView(
@@ -110,7 +104,7 @@ class _LivePageState extends ConsumerState<LivePage> {
                     SliverToBoxAdapter(
                       child: _LiveToolbar(
                         groups: data.groups,
-                        group: _group,
+                        group: group,
                         searchController: _searchController,
                         channelCount: channels.length,
                         onGroupChanged: (value) =>
@@ -133,9 +127,9 @@ class _LivePageState extends ConsumerState<LivePage> {
                         sliver: wide
                             ? SliverGrid.builder(
                                 gridDelegate:
-                                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    SliverGridDelegateWithMaxCrossAxisExtent(
                                       maxCrossAxisExtent: 400,
-                                      mainAxisExtent: 56,
+                                      mainAxisExtent: rowHeight,
                                       crossAxisSpacing: 4,
                                       mainAxisSpacing: 0,
                                     ),
@@ -149,7 +143,7 @@ class _LivePageState extends ConsumerState<LivePage> {
                                 itemCount: channels.length,
                               )
                             : SliverFixedExtentList(
-                                itemExtent: 56,
+                                itemExtent: rowHeight,
                                 delegate: SliverChildBuilderDelegate(
                                   (context, index) => LiveChannelTile(
                                     channel: channels[index],
@@ -174,116 +168,172 @@ class _LivePageState extends ConsumerState<LivePage> {
     );
   }
 
-  List<IptvChannel> _filterChannels(List<IptvChannel> channels) {
-    return filterIptvChannels(channels, group: _group, keyword: _keyword);
-  }
+  Future<void> _showImportDialog(BuildContext context) =>
+      importLiveSource(context, ref);
+}
 
-  Future<void> _showSubscriptions(BuildContext context) async {
+Future<void> showLiveSourceManagement(BuildContext context, WidgetRef ref) {
+  return showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => SizedBox(
+      height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+      child: Consumer(
+        builder: (managerContext, managerRef, _) {
+          final library = managerRef.watch(iptvLibraryProvider);
+          final repo = managerRef.watch(iptvRepositoryProvider).asData?.value;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '直播源管理',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        unawaited(importLiveSource(context, ref));
+                      },
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('添加'),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: library.when(
+                  data: (data) => data.subscriptions.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.live_tv_rounded,
+                          title: '还没有直播源',
+                          message: '点击上方“添加”，导入直播源。',
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+                          itemCount: data.subscriptions.length,
+                          itemBuilder: (context, index) {
+                            final subscription = data.subscriptions[index];
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: SwitchListTile(
+                                    title: Text(
+                                      subscription.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      subscription.url,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    value: subscription.enabled,
+                                    onChanged: repo == null
+                                        ? null
+                                        : (enabled) {
+                                            repo.setEnabled(
+                                              subscription.id,
+                                              enabled,
+                                            );
+                                            ref.invalidate(iptvLibraryProvider);
+                                          },
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: '删除直播源',
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                  ),
+                                  onPressed: repo == null
+                                      ? null
+                                      : () async {
+                                          final confirmed =
+                                              await confirmActionDialog(
+                                                context,
+                                                title: '删除直播源',
+                                                message:
+                                                    '删除“${subscription.name}”及其频道？',
+                                                confirmText: '删除',
+                                              );
+                                          if (!confirmed || !context.mounted) {
+                                            return;
+                                          }
+                                          repo.deleteSubscription(
+                                            subscription.id,
+                                          );
+                                          ref.invalidate(iptvLibraryProvider);
+                                        },
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                  loading: () => const LoadingState(message: '正在读取直播源...'),
+                  error: (_, _) => ErrorState(
+                    message: '暂时无法读取直播源，请重试。',
+                    onRetry: () => ref.invalidate(iptvLibraryProvider),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+Future<void> importLiveSource(BuildContext context, WidgetRef ref) async {
+  final result = await showAppTextInputDialog(
+    context,
+    title: '添加直播源',
+    hintText: '粘贴直播源地址或分享内容',
+    confirmText: '添加',
+    minLines: 6,
+    maxLines: 10,
+    width: 560,
+  );
+  if (result == null || result.trim().isEmpty || !context.mounted) {
+    return;
+  }
+  try {
+    showBlockingProgressDialog(context, '正在添加直播源...');
     final repo = await ref.read(iptvRepositoryProvider.future);
+    final value = result.trim();
+    final importResult =
+        value.startsWith('http://') || value.startsWith('https://')
+        ? await repo.importSubscriptionUrl('IPTV 订阅', value)
+        : await repo.importJson(value);
     if (!context.mounted) {
       return;
     }
-    final library = repo.library();
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.58,
-          child: library.subscriptions.isEmpty
-              ? const EmptyState(
-                  icon: Icons.playlist_remove_rounded,
-                  title: '还没有订阅',
-                  message: '导入直播源后会显示在这里。',
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemBuilder: (context, index) {
-                    final subscription = library.subscriptions[index];
-                    return ListTile(
-                      leading: const Icon(Icons.live_tv_rounded),
-                      title: Text(
-                        subscription.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        subscription.url,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: IconButton(
-                        onPressed: () async {
-                          final confirmed = await confirmActionDialog(
-                            sheetContext,
-                            title: '删除 IPTV 订阅',
-                            message:
-                                '确定删除“${subscription.name}”吗？相关频道缓存也会一并清理。',
-                            confirmText: '删除',
-                          );
-                          if (!confirmed || !sheetContext.mounted) {
-                            return;
-                          }
-                          repo.deleteSubscription(subscription.id);
-                          ref.invalidate(iptvLibraryProvider);
-                          Navigator.pop(sheetContext);
-                        },
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        tooltip: '删除',
-                      ),
-                    );
-                  },
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemCount: library.subscriptions.length,
-                ),
+    ref.invalidate(iptvLibraryProvider);
+    Navigator.of(context, rootNavigator: true).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          importResult.channels == 0 && importResult.errors.isEmpty
+              ? '直播频道没有变化'
+              : '已添加 ${importResult.channels} 个频道，${importResult.errors.length} 项未能添加',
         ),
       ),
     );
-  }
-
-  Future<void> _showImportDialog(BuildContext context) async {
-    final result = await showAppTextInputDialog(
-      context,
-      title: '导入 IPTV',
-      hintText: '粘贴 m3u/m3u8/txt 订阅 URL，或包含 iptv 数组的 JSON',
-      confirmText: '导入',
-      minLines: 6,
-      maxLines: 10,
-      width: 560,
-    );
-    if (result == null || result.trim().isEmpty || !context.mounted) {
-      return;
-    }
-    try {
-      showBlockingProgressDialog(context, '正在导入直播源...');
-      final repo = await ref.read(iptvRepositoryProvider.future);
-      final value = result.trim();
-      final importResult =
-          value.startsWith('http://') || value.startsWith('https://')
-          ? await repo.importSubscriptionUrl('IPTV 订阅', value)
-          : await repo.importJson(value);
-      if (!context.mounted) {
-        return;
-      }
-      ref.invalidate(iptvLibraryProvider);
+  } catch (error) {
+    if (context.mounted) {
       Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            importResult.channels == 0 && importResult.errors.isEmpty
-                ? 'IPTV 订阅无变化'
-                : '导入 ${importResult.channels} 个频道，错误 ${importResult.errors.length} 个',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 }
@@ -328,7 +378,7 @@ class _LiveToolbar extends StatelessWidget {
             padding: const EdgeInsets.only(top: 8, left: 2),
             child: Text(
               '$channelCount 个频道',
-              style: TextStyle(color: secondary, fontSize: 12),
+              style: TextStyle(color: secondary, fontSize: 14),
             ),
           ),
         ],

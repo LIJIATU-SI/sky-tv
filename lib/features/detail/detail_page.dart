@@ -27,6 +27,16 @@ class DetailPage extends ConsumerStatefulWidget {
 class _DetailPageState extends ConsumerState<DetailPage> {
   late Future<MediaDetail?> _future;
   bool _isFavorite = false;
+  int _selectedLineIndex = 0;
+  int? _selectedEpisodeIndex;
+  final _scrollController = ScrollController();
+  final _episodeSectionKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -68,6 +78,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   );
                 }
                 return CustomScrollView(
+                  controller: _scrollController,
                   slivers: [
                     SliverAppBar(
                       expandedHeight: 260,
@@ -79,6 +90,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       ),
                       actions: [
                         IconButton(
+                          tooltip: _isFavorite ? '取消收藏' : '收藏',
                           onPressed: () => _toggleFavorite(detail),
                           icon: Icon(
                             _isFavorite
@@ -172,18 +184,102 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     SliverToBoxAdapter(
                       child: _DetailContentWidth(
                         child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Text(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: [
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size(112, 52),
+                                  textStyle: const TextStyle(fontSize: 18),
+                                ),
+                                onPressed:
+                                    detail.playLines.isEmpty ||
+                                        detail
+                                            .playLines[_selectedLineIndex]
+                                            .episodes
+                                            .isEmpty
+                                    ? null
+                                    : () => _playEpisode(
+                                        detail,
+                                        _selectedEpisodeIndex ?? 0,
+                                      ),
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                label: const Text('播放'),
+                              ),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(112, 52),
+                                  textStyle: const TextStyle(fontSize: 18),
+                                ),
+                                onPressed: () => _toggleFavorite(detail),
+                                icon: Icon(
+                                  _isFavorite
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                ),
+                                label: Text(_isFavorite ? '已收藏' : '收藏'),
+                              ),
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(88, 52),
+                                  textStyle: const TextStyle(fontSize: 18),
+                                ),
+                                onPressed: detail.playLines.isEmpty
+                                    ? null
+                                    : () {
+                                        final section =
+                                            _episodeSectionKey.currentContext;
+                                        if (section != null) {
+                                          Scrollable.ensureVisible(
+                                            section,
+                                            alignment: 0.2,
+                                            duration: const Duration(
+                                              milliseconds: 250,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                child: const Text('选集'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _DetailContentWidth(
+                        child: ExpansionTile(
+                          title: const Text(
+                            '简介',
+                            style: TextStyle(fontSize: 18),
+                          ),
+                          subtitle: Text(
                             detail.description?.isNotEmpty == true
                                 ? detail.description!
                                 : '暂无简介',
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                              height: 1.55,
-                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16),
                           ),
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                            20,
+                            0,
+                            20,
+                            16,
+                          ),
+                          children: [
+                            Text(
+                              detail.description?.isNotEmpty == true
+                                  ? detail.description!
+                                  : '暂无简介',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                height: 1.55,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -193,7 +289,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                         child: InlineState(
                           icon: Icons.link_off_rounded,
                           title: '没有播放地址',
-                          message: '当前详情没有返回可播放线路。',
+                          message: '暂时无法播放，请稍后再试。',
                         ),
                       )
                     else
@@ -208,46 +304,80 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     );
   }
 
+  Future<void> _playEpisode(MediaDetail detail, int index) async {
+    setState(() => _selectedEpisodeIndex = index);
+    await context.push(
+      SkyRoutes.player(
+        detail.sourceId,
+        detail.id,
+        lineIndex: _selectedLineIndex,
+        episodeIndex: index,
+      ),
+      extra: detail,
+    );
+    if (mounted) setState(() {});
+  }
+
   List<Widget> _detailEpisodeSlivers(BuildContext context, MediaDetail detail) {
     final inset = _detailHorizontalInset(context);
-    final slivers = <Widget>[];
-    for (var lineIndex = 0; lineIndex < detail.playLines.length; lineIndex++) {
-      final line = detail.playLines[lineIndex];
-      slivers.add(
+    final line = detail.playLines[_selectedLineIndex];
+    // 只展示已有记录能确认的一集，不推断其他集是否看过。
+    final record = ref
+        .watch(mediaRepositoryProvider)
+        .asData
+        ?.value
+        .watchRecord(detail.sourceId, detail.id);
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(inset, 8, inset, 12),
+          key: _episodeSectionKey,
+          child: Text(
+            '选集 · 共 ${line.episodes.length} 集',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+      if (detail.playLines.length > 1)
         SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(inset, 8, inset, 12),
-            child: Text(
-              line.name,
-              style: Theme.of(context).textTheme.titleMedium,
+            padding: EdgeInsets.symmetric(horizontal: inset),
+            child: EpisodeLineSelector(
+              lineCount: detail.playLines.length,
+              lineIndex: _selectedLineIndex,
+              unavailableLines: {
+                for (var i = 0; i < detail.playLines.length; i++)
+                  if (detail.playLines[i].episodes.isEmpty) i,
+              },
+              onChanged: (index) => setState(() {
+                _selectedLineIndex = index;
+                _selectedEpisodeIndex = null;
+              }),
             ),
           ),
         ),
-      );
-      slivers.add(
-        EpisodeGridSliver(
-          padding: EdgeInsets.fromLTRB(inset, 0, inset, 20),
-          itemCount: line.episodes.length,
-          itemBuilder: (context, index) {
-            final episode = line.episodes[index];
-            return EpisodeChip(
-              title: episode.title,
-              selected: false,
-              onPressed: () => context.push(
-                SkyRoutes.player(
-                  detail.sourceId,
-                  detail.id,
-                  lineIndex: lineIndex,
-                  episodeIndex: index,
-                ),
-                extra: detail,
-              ),
-            );
-          },
+      if (line.episodes.isEmpty)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('暂时没有选集，可以换个播放方式试试。'),
+          ),
         ),
-      );
-    }
-    return slivers;
+      EpisodeGridSliver(
+        padding: EdgeInsets.fromLTRB(inset, 0, inset, 20),
+        itemCount: line.episodes.length,
+        itemBuilder: (context, index) => EpisodeChip(
+          title: line.episodes[index].title,
+          selected: _selectedEpisodeIndex == index,
+          watched:
+              record != null &&
+              record.positionMs > 0 &&
+              record.lineIndex == _selectedLineIndex &&
+              record.episodeIndex == index,
+          onPressed: () => _playEpisode(detail, index),
+        ),
+      ),
+    ];
   }
 
   double _detailHorizontalInset(BuildContext context) {

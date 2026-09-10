@@ -6,7 +6,7 @@ class AppSearchField extends StatelessWidget {
     super.key,
     this.controller,
     this.hintText,
-    this.prefixIcon = const Icon(Icons.search_rounded, size: 22),
+    this.prefixIcon = const Icon(Icons.search_rounded, size: 26),
     this.onChanged,
     this.onSubmitted,
     this.textInputAction,
@@ -40,12 +40,13 @@ class AppSearchField extends StatelessWidget {
         suffixIcon: c.text.isEmpty
             ? null
             : IconButton(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 onPressed: () {
                   c.clear();
                   onChanged?.call('');
                 },
-                icon: Icon(Icons.clear_rounded, size: 20, color: secondary),
-                tooltip: '清除',
+                icon: Icon(Icons.clear_rounded, size: 24, color: secondary),
+                tooltip: '清空搜索',
               ),
       ),
     );
@@ -62,13 +63,13 @@ class AppSearchField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       textInputAction: textInputAction ?? TextInputAction.search,
-      style: dark ? const TextStyle(color: Colors.white) : null,
+      style: TextStyle(fontSize: 18, color: dark ? Colors.white : null),
       decoration: AppInputDecoration.flat(
         context,
-        hintText: hintText,
+        hintText: hintText ?? '搜索电影、电视剧',
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
-        hintStyle: TextStyle(color: secondary),
+        hintStyle: TextStyle(color: secondary, fontSize: 18),
         dark: dark,
       ),
     );
@@ -103,6 +104,9 @@ class AppInputDecoration {
       borderSide: BorderSide.none,
     );
     return InputDecoration(
+      constraints: const BoxConstraints(minHeight: 56),
+      prefixIconConstraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      suffixIconConstraints: const BoxConstraints(minWidth: 48, minHeight: 48),
       hintText: hintText,
       labelText: labelText,
       prefixIcon: prefixIcon,

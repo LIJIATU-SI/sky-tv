@@ -482,8 +482,10 @@ class AppDatabase {
   List<IptvChannel> loadIptvChannels() {
     return _db
         .select('''
-      SELECT * FROM iptv_channels
-      ORDER BY group_name ASC, sort_order ASC, name ASC
+      SELECT c.* FROM iptv_channels c
+      JOIN iptv_subscriptions s ON s.id = c.subscription_id
+      WHERE s.enabled = 1
+      ORDER BY c.group_name ASC, c.sort_order ASC, c.name ASC
       LIMIT 2000
     ''')
         .map(_iptvChannel)
@@ -492,10 +494,12 @@ class AppDatabase {
 
   List<String> loadIptvGroups() {
     final rows = _db.select('''
-      SELECT group_name, MIN(sort_order) AS first_order
-      FROM iptv_channels
-      GROUP BY group_name
-      ORDER BY first_order ASC, group_name ASC
+      SELECT c.group_name, MIN(c.sort_order) AS first_order
+      FROM iptv_channels c
+      JOIN iptv_subscriptions s ON s.id = c.subscription_id
+      WHERE s.enabled = 1
+      GROUP BY c.group_name
+      ORDER BY first_order ASC, c.group_name ASC
     ''');
     return rows
         .map((row) => row['group_name'] as String?)
@@ -576,6 +580,13 @@ class AppDatabase {
       _db.execute('ROLLBACK');
       rethrow;
     }
+  }
+
+  void setIptvSubscriptionEnabled(String id, bool enabled) {
+    _db.execute('UPDATE iptv_subscriptions SET enabled = ? WHERE id = ?', [
+      enabled ? 1 : 0,
+      id,
+    ]);
   }
 
   void clearCache() {

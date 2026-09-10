@@ -86,7 +86,7 @@ class IptvRepository {
         name: name,
         url: url,
         contentHash: hash,
-        enabled: true,
+        enabled: _db.loadIptvSubscription(id)?.enabled ?? true,
         lastCheckedAt: now,
         lastUpdatedAt: now,
       ),
@@ -145,6 +145,10 @@ class IptvRepository {
 
   void deleteSubscription(String id) {
     _db.deleteIptvSubscription(id);
+  }
+
+  void setEnabled(String id, bool enabled) {
+    _db.setIptvSubscriptionEnabled(id, enabled);
   }
 
   void close() {

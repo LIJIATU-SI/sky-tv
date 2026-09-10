@@ -6,6 +6,8 @@ import '../../data/repositories/app_providers.dart';
 import '../../ui/widgets/app_dialogs.dart';
 import '../../ui/widgets/app_logo.dart';
 import '../../ui/widgets/state_views.dart';
+import '../sources/sources_page.dart';
+import '../live/live_page.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -16,75 +18,49 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
-    final userAgent = ref.watch(customUserAgentProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
         children: [
-          const SectionHeader(title: '外观'),
-          themeMode.when(
-            data: (mode) => _ThemeModeGroup(value: mode),
-            error: (error, _) => ListTile(
-              leading: const Icon(Icons.error_outline_rounded),
-              title: const Text('主题设置读取失败'),
-              subtitle: Text(error.toString()),
-            ),
-            loading: () => const ListTile(
-              leading: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              title: Text('正在读取主题设置'),
-            ),
+          const SectionHeader(title: '内容管理'),
+          ListTile(
+            leading: const Icon(Icons.movie_outlined),
+            title: const Text('影视源管理'),
+            subtitle: const Text('添加、启用或删除影视源'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => showVideoSourceManagement(context, ref),
           ),
-          const SectionHeader(title: '网络'),
-          userAgent.when(
-            data: (value) => ListTile(
-              leading: const Icon(Icons.travel_explore_rounded),
-              title: const Text('自定义 UA'),
-              subtitle: Text(value.isEmpty ? '未设置，使用系统默认请求头' : value),
-              onTap: () => _editUserAgent(context, ref, value),
-            ),
-            error: (error, _) => ListTile(
-              leading: const Icon(Icons.error_outline_rounded),
-              title: const Text('UA 设置读取失败'),
-              subtitle: Text(error.toString()),
-            ),
-            loading: () => const ListTile(
-              leading: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              title: Text('正在读取 UA 设置'),
-            ),
+          ListTile(
+            leading: const Icon(Icons.live_tv_rounded),
+            title: const Text('直播源管理'),
+            subtitle: const Text('添加、启用或删除直播源'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => showLiveSourceManagement(context, ref),
           ),
-          const SectionHeader(title: '数据'),
+          const SectionHeader(title: '应用'),
           ListTile(
             leading: const Icon(Icons.refresh_rounded),
-            title: const Text('刷新首页数据'),
-            subtitle: const Text('刷新焦点、推荐、续看与收藏'),
+            title: const Text('刷新内容'),
+            subtitle: const Text('更新首页推荐、继续观看和收藏'),
             onTap: () {
               ref.invalidate(homeDataProvider);
               ref.invalidate(homeFeedProvider);
+              ref.invalidate(homeCategoryRecommendationProvider);
               ScaffoldMessenger.of(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('首页数据已刷新')));
+              ).showSnackBar(const SnackBar(content: Text('首页内容已刷新')));
             },
           ),
           ListTile(
             leading: const Icon(Icons.cleaning_services_rounded),
             title: const Text('清理缓存'),
-            subtitle: const Text('清理分类与海报缓存'),
+            subtitle: const Text('清理临时数据，保留收藏和观看记录'),
             onTap: () => _confirmClearCache(context, ref),
           ),
-          const SectionHeader(title: '关于'),
           ListTile(
             leading: const AppLogo(size: 36),
-            title: const Text('sky-tv'),
-            subtitle: const Text('跨平台视频播放器'),
+            title: const Text('关于'),
+            subtitle: const Text('sky-tv · 影视与直播播放器'),
             onTap: () => _openProject(context),
           ),
         ],
@@ -104,44 +80,11 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _editUserAgent(
-    BuildContext context,
-    WidgetRef ref,
-    String value,
-  ) async {
-    final result = await showAppTextInputDialog(
-      context,
-      title: '自定义 UA',
-      hintText: '留空表示使用系统默认请求头',
-      confirmText: '保存',
-      initialValue: value,
-      minLines: 1,
-      maxLines: 3,
-      autofocus: true,
-    );
-    if (result == null || !context.mounted) {
-      return;
-    }
-    final repo = await ref.read(settingsRepositoryProvider.future);
-    await repo.setCustomUserAgent(result);
-    ref.invalidate(customUserAgentProvider);
-    ref.invalidate(requestHeadersProvider);
-    ref.invalidate(macCmsApiProvider);
-    ref.invalidate(mediaRepositoryProvider);
-    ref.invalidate(sourceRepositoryProvider);
-    ref.invalidate(iptvRepositoryProvider);
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('UA 设置已保存')));
-    }
-  }
-
   Future<void> _confirmClearCache(BuildContext context, WidgetRef ref) async {
     final confirmed = await confirmActionDialog(
       context,
       title: '清理缓存',
-      message: '将清理分类缓存与海报图片，并重置订阅校验状态。不会删除订阅、频道、收藏和观看记录。',
+      message: '清理临时数据，不会删除已添加的影视和直播内容、收藏及观看记录。',
       confirmText: '清理',
     );
     if (!confirmed || !context.mounted) {
@@ -173,54 +116,5 @@ class SettingsPage extends ConsumerWidget {
         context,
       ).showSnackBar(SnackBar(content: Text('清理失败：$error')));
     }
-  }
-}
-
-class _ThemeModeGroup extends ConsumerWidget {
-  const _ThemeModeGroup({required this.value});
-
-  final ThemeMode value;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: SegmentedButton<ThemeMode>(
-        segments: const [
-          ButtonSegment(
-            value: ThemeMode.system,
-            icon: Icon(Icons.brightness_auto_rounded),
-            label: Text('系统'),
-          ),
-          ButtonSegment(
-            value: ThemeMode.light,
-            icon: Icon(Icons.light_mode_rounded),
-            label: Text('浅色'),
-          ),
-          ButtonSegment(
-            value: ThemeMode.dark,
-            icon: Icon(Icons.dark_mode_rounded),
-            label: Text('深色'),
-          ),
-        ],
-        selected: {value},
-        onSelectionChanged: (selected) {
-          _setThemeMode(ref, selected.first);
-        },
-        showSelectedIcon: false,
-        style: const ButtonStyle(
-          visualDensity: VisualDensity(horizontal: -1, vertical: -1),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _setThemeMode(WidgetRef ref, ThemeMode mode) async {
-    if (mode == value) {
-      return;
-    }
-    final repo = await ref.read(settingsRepositoryProvider.future);
-    await repo.setThemeMode(mode);
-    ref.invalidate(themeModeProvider);
   }
 }

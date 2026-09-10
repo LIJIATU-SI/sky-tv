@@ -46,30 +46,18 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
   Widget build(BuildContext context) {
     final sources = ref.watch(sourcesProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('影视'),
-        actions: [
-          IconButton(
-            onPressed: sources.maybeWhen(
-              data: (items) => items.isEmpty ? null : _showManageSheet,
-              orElse: () => null,
-            ),
-            icon: const Icon(Icons.tune_rounded),
-            tooltip: '源管理',
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('影视')),
       body: sources.when(
         data: (items) {
           if (items.isEmpty) {
             return EmptyState(
               icon: Icons.movie_filter_rounded,
               title: '还没有影视源',
-              message: '导入 JSON 影视源后即可浏览和播放。',
+              message: '添加影视源后，就可以选择电影和电视剧。',
               action: FilledButton.icon(
                 onPressed: () => unawaited(_importSources()),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('导入影视源'),
+                label: const Text('添加影视源'),
               ),
             );
           }
@@ -113,7 +101,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
           );
         },
         error: (error, _) => ErrorState(message: error.toString()),
-        loading: () => const LoadingState(message: '正在读取影视源...'),
+        loading: () => const LoadingState(message: '正在读取影视内容...'),
       ),
     );
   }
@@ -150,68 +138,72 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     }
   }
 
-  Future<void> _showManageSheet() {
-    return showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => _SourceManageSheet(
-        onImport: () {
-          Navigator.pop(sheetContext);
-          unawaited(_importSources());
-        },
-      ),
-    );
-  }
+  Future<void> _showManageSheet() => showVideoSourceManagement(context, ref);
 
-  Future<void> _importSources() async {
-    final result = await showAppTextInputDialog(
-      context,
-      title: '导入影视源',
-      hintText: '粘贴订阅 URL，或 JSON 数组',
-      confirmText: '导入',
-      minLines: 8,
-      maxLines: 12,
-      width: 560,
-    );
-    if (result == null || result.trim().isEmpty || !mounted) {
+  Future<void> _importSources() => importVideoSources(context, ref);
+}
+
+Future<void> showVideoSourceManagement(BuildContext context, WidgetRef ref) {
+  return showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => _SourceManageSheet(
+      onImport: () {
+        Navigator.pop(sheetContext);
+        unawaited(importVideoSources(context, ref));
+      },
+    ),
+  );
+}
+
+Future<void> importVideoSources(BuildContext context, WidgetRef ref) async {
+  final result = await showAppTextInputDialog(
+    context,
+    title: '添加影视源',
+    hintText: '粘贴影视源地址或分享内容',
+    confirmText: '添加',
+    minLines: 8,
+    maxLines: 12,
+    width: 560,
+  );
+  if (result == null || result.trim().isEmpty || !context.mounted) {
+    return;
+  }
+  try {
+    showBlockingProgressDialog(context, '正在添加...');
+    final repo = await ref.read(sourceRepositoryProvider.future);
+    if (!context.mounted) {
       return;
     }
-    try {
-      showBlockingProgressDialog(context, '正在导入...');
-      final repo = await ref.read(sourceRepositoryProvider.future);
-      if (!mounted) {
-        return;
-      }
-      final value = result.trim();
-      final importResult =
-          value.startsWith('http://') || value.startsWith('https://')
-          ? await repo.importSubscriptionUrl('远程订阅', value)
-          : repo.importJson(value);
-      if (!mounted) {
-        return;
-      }
-      ref.invalidate(sourcesProvider);
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            importResult.sources.isEmpty && importResult.errors.isEmpty
-                ? '订阅源无变化'
-                : '导入 ${importResult.sources.length} 个源，错误 ${importResult.errors.length} 个',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    final value = result.trim();
+    final importResult =
+        value.startsWith('http://') || value.startsWith('https://')
+        ? await repo.importSubscriptionUrl('远程订阅', value)
+        : repo.importJson(value);
+    if (!context.mounted) {
+      return;
     }
+    ref.invalidate(sourcesProvider);
+    Navigator.of(context, rootNavigator: true).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          importResult.sources.isEmpty && importResult.errors.isEmpty
+              ? '影视内容没有变化'
+              : '已添加 ${importResult.sources.length} 个影视源，${importResult.errors.length} 项未能添加',
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    Navigator.of(context, rootNavigator: true).pop();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error.toString())));
   }
 }
 
@@ -239,9 +231,9 @@ class _MobileBrowse extends ConsumerWidget {
     if (enabled.isEmpty) {
       return EmptyState(
         icon: Icons.toggle_off_rounded,
-        title: '还没有启用的影视源',
-        message: '在源管理中启用影视源后即可浏览分类内容。',
-        action: FilledButton(onPressed: onManage, child: const Text('打开源管理')),
+        title: '还没有可用的影视源',
+        message: '选择已添加的影视源，或点击右上角添加。',
+        action: FilledButton(onPressed: onManage, child: const Text('选择已有影视源')),
       );
     }
     final sourceId = selectedSourceId ?? enabled.first.sourceId;
@@ -310,7 +302,7 @@ class _DesktopBrowse extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: [
                 Text(
-                  '我的源',
+                  '影视来源',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -326,10 +318,13 @@ class _DesktopBrowse extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                 ],
-                IconButton(
-                  onPressed: onManage,
-                  icon: const Icon(Icons.tune_rounded),
-                  tooltip: '源管理',
+                Visibility(
+                  visible: false,
+                  child: IconButton(
+                    onPressed: onManage,
+                    icon: const Icon(Icons.tune_rounded),
+                    tooltip: '源管理',
+                  ),
                 ),
               ],
             ),
@@ -340,11 +335,11 @@ class _DesktopBrowse extends ConsumerWidget {
           child: enabled.isEmpty || sourceId == null
               ? EmptyState(
                   icon: Icons.toggle_off_rounded,
-                  title: '还没有启用的影视源',
-                  message: '在左侧源管理中启用影视源后即可浏览分类内容。',
+                  title: '还没有可用的影视源',
+                  message: '选择已添加的影视源，或点击右上角添加。',
                   action: FilledButton(
                     onPressed: onManage,
-                    child: const Text('打开源管理'),
+                    child: const Text('选择已有影视源'),
                   ),
                 )
               : RefreshIndicator(
@@ -448,7 +443,7 @@ class _BrowseContent {
                   child: EmptyState(
                     icon: Icons.category_outlined,
                     title: '暂无分类',
-                    message: '当前源没有返回分类列表。',
+                    message: '暂时没有分类，可以换一个影视来源试试。',
                     compact: true,
                   ),
                 ),
@@ -610,7 +605,7 @@ class _SourceRailTile extends StatelessWidget {
                   ),
                   if (source.disabled)
                     Text(
-                      '已禁用',
+                      '未使用',
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
                         fontSize: 11,
@@ -618,8 +613,10 @@ class _SourceRailTile extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
-              _LatencyBadge(text: _latencyText(source)),
+              Visibility(
+                visible: false,
+                child: _LatencyBadge(text: _latencyText(source)),
+              ),
             ],
           ),
         ),
@@ -664,7 +661,7 @@ class _SourceManageSheetState extends ConsumerState<_SourceManageSheet> {
                         child: Padding(
                           padding: EdgeInsets.only(left: 8),
                           child: Text(
-                            '源管理',
+                            '影视源管理',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -672,24 +669,27 @@ class _SourceManageSheetState extends ConsumerState<_SourceManageSheet> {
                           ),
                         ),
                       ),
-                      IconButton(
-                        onPressed: _testing
-                            ? null
-                            : () => unawaited(_testLatencies()),
-                        tooltip: '全部测速',
-                        icon: _testing
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.bolt_rounded),
+                      Visibility(
+                        visible: false,
+                        child: IconButton(
+                          onPressed: _testing
+                              ? null
+                              : () => unawaited(_testLatencies()),
+                          tooltip: '全部测速',
+                          icon: _testing
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.bolt_rounded),
+                        ),
                       ),
                       IconButton(
                         onPressed: widget.onImport,
-                        tooltip: '导入影视源',
+                        tooltip: '添加影视源',
                         icon: const Icon(Icons.add_rounded),
                       ),
                     ],
@@ -739,7 +739,7 @@ class _SourceManageSheetState extends ConsumerState<_SourceManageSheet> {
       ),
       loading: () => SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.4,
-        child: const LoadingState(message: '正在读取影视源...'),
+        child: const LoadingState(message: '正在读取影视内容...'),
       ),
     );
   }
@@ -831,19 +831,22 @@ class _ManageSourceTile extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
         child: Row(
           children: [
-            PopupMenuButton<String>(
-              tooltip: '更多',
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'delete', child: Text('删除')),
-              ],
-              onSelected: (value) {
-                if (value == 'delete') {
-                  onDelete();
-                }
-              },
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(Icons.more_vert_rounded),
+            Visibility(
+              visible: true,
+              child: PopupMenuButton<String>(
+                tooltip: '更多',
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'delete', child: Text('删除')),
+                ],
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    onDelete();
+                  }
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.more_vert_rounded),
+                ),
               ),
             ),
             Expanded(
@@ -856,18 +859,25 @@ class _ManageSourceTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    source.apiUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
+                  Visibility(
+                    visible: false,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 3),
+                        Text(
+                          source.apiUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        _LatencyBadge(text: _latencyText(source)),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  _LatencyBadge(text: _latencyText(source)),
                 ],
               ),
             ),

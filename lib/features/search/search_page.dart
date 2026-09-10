@@ -136,7 +136,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         setState(() {
           _searching = false;
           _hasMoreSources = false;
-          _error = '请先导入并启用影视源';
+          _error = '还没有可用的影视内容，请先添加影视源。';
         });
         return;
       }
@@ -240,25 +240,51 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                    child: AppSearchField(
-                      controller: _controller,
-                      hintText: '搜索片名',
-                      autofocus: _desktopAutofocus,
-                      onSubmitted: _search,
-                      onChanged: (value) {
-                        if (value.trim().isEmpty) {
-                          unawaited(_search(''));
-                        }
-                      },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        AppSearchField(
+                          controller: _controller,
+                          hintText: '搜索电影、电视剧',
+                          autofocus: _desktopAutofocus,
+                          onSubmitted: _search,
+                          onChanged: (value) {
+                            if (value.trim().isEmpty) {
+                              unawaited(_search(''));
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            onPressed: () => _search(_controller.text),
+                            icon: const Icon(Icons.search_rounded),
+                            label: const Text('搜索'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Expanded(
                     child: Builder(
                       builder: (context) {
                         if (_error != null) {
-                          return ErrorState(
-                            message: _error!,
-                            onRetry: () => _search(_controller.text),
+                          return Column(
+                            children: [
+                              Expanded(
+                                child: ErrorState(
+                                  message: _error == '还没有可用的影视内容，请先添加影视源。'
+                                      ? _error!
+                                      : '搜索暂时没有成功，请检查网络后重试。',
+                                  onRetry: () => _search(_controller.text),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => context.go('/sources'),
+                                child: const Text('添加影视源'),
+                              ),
+                            ],
                           );
                         }
                         if (!_searching && _groups.isEmpty) {
@@ -277,7 +303,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           return const EmptyState(
                             icon: Icons.search_off_rounded,
                             title: '没有找到结果',
-                            message: '可以换个关键词，或检查已启用的影视源。',
+                            message: '试试其他片名或关键词。',
                           );
                         }
                         return ListView(
@@ -288,7 +314,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                             if (_searching)
                               const Padding(
                                 padding: EdgeInsets.all(20),
-                                child: LoadingState(message: '正在搜索更多源...'),
+                                child: LoadingState(message: '正在查找更多影片...'),
                               ),
                             if (!_searching && _hasMoreSources)
                               _SearchMoreButton(
@@ -302,7 +328,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                                     MediaRepository.searchBatchSize)
                               const Padding(
                                 padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-                                child: Center(child: Text('已搜索全部可用影视源')),
+                                child: Center(child: Text('已完成全部搜索')),
                               ),
                           ],
                         );
@@ -337,7 +363,7 @@ class _SearchMoreButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: const Icon(Icons.expand_more_rounded),
-        label: Text('继续搜索更多源（$searched/$total）'),
+        label: Text('查找更多影片'),
       ),
     );
   }
@@ -355,7 +381,7 @@ class _SourceResultGroup extends StatelessWidget {
         leading: const Icon(Icons.error_outline_rounded),
         title: Text(group.sourceName),
         subtitle: Text(
-          group.error!,
+          '暂时无法获取这里的内容，请稍后再试。',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -371,8 +397,8 @@ class _SourceResultGroup extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
             child: InlineState(
               icon: Icons.search_off_rounded,
-              title: '该源暂无结果',
-              message: '继续等待其他源返回',
+              title: '这里没有找到影片',
+              message: '可以查看其他搜索结果。',
             ),
           ),
         if (!group.completed)
@@ -400,7 +426,7 @@ class _SearchStartView extends StatelessWidget {
         const EmptyState(
           icon: Icons.travel_explore_rounded,
           title: '搜索影片',
-          message: '输入片名即可开始搜索。',
+          message: '输入片名，再点“搜索”。',
         ),
         if (keywords.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -431,27 +457,29 @@ class _SearchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      minVerticalPadding: 8,
+      minVerticalPadding: 12,
+      minTileHeight: 96,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: SizedBox(
-          width: 44,
-          height: 66,
+          width: 56,
+          height: 84,
           child: PosterImage(
             url: item.poster,
-            memCacheWidth: posterMemCacheFor(44),
+            memCacheWidth: posterMemCacheFor(56),
           ),
         ),
       ),
       title: Text(
         item.title,
-        maxLines: 1,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
         mediaMetaLine(item, mode: PosterMetaMode.withSource) ?? item.sourceName,
+        style: const TextStyle(fontSize: 14),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

@@ -9,7 +9,6 @@ import '../../core/models/media_models.dart';
 import '../../data/repositories/app_providers.dart';
 import '../../ui/widgets/app_dialogs.dart';
 import '../../ui/widgets/app_logo.dart';
-import '../../ui/widgets/home_focus_carousel.dart';
 import '../../ui/widgets/poster_row.dart';
 import '../../ui/widgets/state_views.dart';
 
@@ -20,48 +19,38 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(homeDataProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const AppBrandTitle(),
-        actions: [
-          IconButton(
-            onPressed: () => context.go(SkyRoutes.search()),
-            icon: const Icon(Icons.search_rounded),
-            tooltip: '搜索',
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const AppBrandTitle()),
       body: data.when(
         skipLoadingOnReload: true,
         data: (home) => RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(homeDataProvider);
             ref.invalidate(homeFeedProvider);
+            ref.invalidate(homeCategoryRecommendationProvider);
           },
           child: ListView(
             children: [
-              const _HomeDiscover(),
-              if (home.recentSearches.isNotEmpty)
-                _RecentSearches(keywords: home.recentSearches),
-              SectionHeader(
-                title: '继续观看',
-                action: home.records.isEmpty
-                    ? TextButton(
-                        onPressed: () => context.go(SkyRoutes.search()),
-                        child: const Text('找片'),
-                      )
-                    : null,
-              ),
-              if (home.records.isEmpty)
-                const SizedBox(
-                  height: 160,
-                  child: EmptyState(
-                    icon: Icons.play_circle_outline,
-                    title: '还没有播放记录',
-                    message: '搜索影片并播放后，会在这里继续观看。',
-                    compact: true,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: FilledButton.icon(
+                  onPressed: () => context.go(SkyRoutes.search()),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(60),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                )
-              else ...[
+                  icon: const Icon(Icons.search_rounded, size: 28),
+                  label: const Text('搜索电影、电视剧'),
+                ),
+              ),
+              if (home.records.isNotEmpty) ...[
+                const SectionHeader(title: '继续观看'),
                 ContinueWatchRow(
                   records: home.records,
                   onTap: (record) => context.push(
@@ -78,18 +67,10 @@ class HomePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-              const SectionHeader(title: '我的收藏'),
-              if (home.favorites.isEmpty)
-                const SizedBox(
-                  height: 140,
-                  child: EmptyState(
-                    icon: Icons.favorite_border,
-                    title: '暂无收藏',
-                    message: '喜欢的影片可以在详情页收藏。',
-                    compact: true,
-                  ),
-                )
-              else ...[
+              const _HomeCategoryRow(categoryName: '电视剧'),
+              const _HomeCategoryRow(categoryName: '电影'),
+              if (home.favorites.isNotEmpty) ...[
+                const SectionHeader(title: '我的收藏'),
                 PosterRow(
                   items: home.favorites,
                   onTap: (item) =>
@@ -99,6 +80,7 @@ class HomePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
               ],
+              const _HomeDiscover(),
               const SizedBox(height: 24),
             ],
           ),
@@ -150,38 +132,6 @@ Future<void> _removeFavorite(
   ref.invalidate(homeFeedProvider);
 }
 
-class _RecentSearches extends StatelessWidget {
-  const _RecentSearches({required this.keywords});
-
-  final List<String> keywords;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SectionHeader(title: '最近搜索'),
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            itemCount: keywords.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final keyword = keywords[index];
-              return ActionChip(
-                label: Text(keyword),
-                onPressed: () => context.go(SkyRoutes.search(keyword)),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _HomeDiscover extends ConsumerWidget {
   const _HomeDiscover();
 
@@ -204,18 +154,9 @@ class _HomeDiscover extends ConsumerWidget {
         }
         return Column(
           children: [
-            if (homeFeed.focus.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: HomeFocusCarousel(
-                  items: homeFeed.focus,
-                  onTap: (item) =>
-                      context.push(SkyRoutes.detail(item.sourceId, item.id)),
-                ),
-              ),
             if (homeFeed.recommend.isNotEmpty) ...[
               SectionHeader(
-                title: '为你推荐',
+                title: '随便看看',
                 action: TextButton(
                   onPressed: () => context.go('/sources'),
                   child: const Text('更多'),
@@ -233,6 +174,61 @@ class _HomeDiscover extends ConsumerWidget {
       },
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _HomeCategoryRow extends ConsumerWidget {
+  const _HomeCategoryRow({required this.categoryName});
+  final String categoryName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recommendation = ref.watch(
+      homeCategoryRecommendationProvider(categoryName),
+    );
+    final row = recommendation.asData?.value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeader(
+          title: '推荐$categoryName',
+          action: TextButton(
+            onPressed: () => row == null
+                ? context.go('/sources')
+                : context.push(
+                    SkyRoutes.category(row.category.sourceId, row.category.id),
+                  ),
+            child: const Text('更多'),
+          ),
+        ),
+        recommendation.when(
+          skipLoadingOnReload: true,
+          data: (row) => row == null
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: Text('暂时没有$categoryName推荐，可以搜索片名或浏览更多。'),
+                )
+              : PosterRow(
+                  items: row.items,
+                  onTap: (item) =>
+                      context.push(SkyRoutes.detail(item.sourceId, item.id)),
+                ),
+          loading: () => const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: LinearProgressIndicator(),
+          ),
+          error: (_, _) => Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: TextButton(
+              onPressed: () => ref.invalidate(
+                homeCategoryRecommendationProvider(categoryName),
+              ),
+              child: const Text('推荐暂时加载失败，点击重试'),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

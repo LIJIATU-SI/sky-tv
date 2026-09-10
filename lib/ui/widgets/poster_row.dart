@@ -9,7 +9,7 @@ class PosterRow extends StatelessWidget {
     required this.items,
     required this.onTap,
     this.onLongPress,
-    this.itemWidth = 118,
+    this.itemWidth = 156,
   });
 
   final List<MediaItem> items;
@@ -54,7 +54,7 @@ class ContinueWatchRow extends StatelessWidget {
     required this.records,
     required this.onTap,
     this.onLongPress,
-    this.itemWidth = 118,
+    this.itemWidth = 156,
   });
 
   final List<WatchRecord> records;

@@ -135,6 +135,33 @@ final homeFeedProvider = FutureProvider.autoDispose<HomeFeed>((ref) async {
   return mediaRepo.homeFeed(sources);
 });
 
+// 只使用接口明确命名的分类，不根据片名、分类编号推断类型。
+final homeCategoryRecommendationProvider = FutureProvider.autoDispose
+    .family<CategoryPreviewRow?, String>((ref, categoryName) async {
+      final sources = await ref.watch(sourcesProvider.future);
+      final repo = await ref.watch(mediaRepositoryProvider.future);
+      for (final source in repo.enabledSources(sources).take(3)) {
+        try {
+          final categories = await repo.categories(source);
+          for (final category in categories.where(
+            (item) => item.name.trim() == categoryName,
+          )) {
+            final items = await repo.categoryPreview(source, category.id);
+            if (items.isNotEmpty) {
+              return CategoryPreviewRow(
+                category: category,
+                items: items.take(8).toList(),
+              );
+            }
+          }
+        } catch (_) {
+          // 单个来源失败不阻断其他来源，也不影响首页其他模块。
+          continue;
+        }
+      }
+      return null;
+    });
+
 class HomeData {
   const HomeData({
     required this.records,

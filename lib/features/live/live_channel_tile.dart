@@ -3,6 +3,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/iptv_models.dart';
 
+double liveChannelTileHeight(BuildContext context) {
+  final scaler = MediaQuery.textScalerOf(context);
+  return ((scaler.scale(18) + scaler.scale(14)) * 1.3 + 20).clamp(
+    76.0,
+    double.infinity,
+  );
+}
+
 class LiveChannelTile extends StatelessWidget {
   const LiveChannelTile({
     super.key,
@@ -27,55 +35,78 @@ class LiveChannelTile extends StatelessWidget {
         : scheme.primaryContainer.withValues(alpha: 0.55);
 
     const radius = BorderRadius.all(Radius.circular(8));
-    return Material(
-      color: selected ? selectedFill : Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              _ChannelLogo(url: channel.logo, dark: dark),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      channel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 14,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      channel.group ?? '未分组',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: secondary, fontSize: 11),
-                    ),
-                  ],
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final titleHeight = MediaQuery.textScalerOf(context).scale(18) * 1.3;
+        final showGroup =
+            !constraints.hasBoundedHeight ||
+            constraints.maxHeight >= liveChannelTileHeight(context);
+        final verticalPadding = constraints.hasBoundedHeight && !showGroup
+            ? ((constraints.maxHeight - titleHeight.ceilToDouble() - 1) / 2)
+                  .clamp(0.0, 8.0)
+            : 8.0;
+        return Material(
+          color: selected ? selectedFill : Colors.transparent,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: verticalPadding,
               ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.play_arrow_rounded,
-                size: 20,
-                color: dark ? Colors.white70 : scheme.primary,
+              child: Row(
+                children: [
+                  _ChannelLogo(url: channel.logo, dark: dark),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          channel.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: foreground,
+                            fontSize: 18,
+                            height: 1.3,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ),
+                        ),
+                        if (showGroup) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            channel.group ?? '其他频道',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: secondary,
+                              fontSize: 14,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 20,
+                    color: dark ? Colors.white70 : scheme.primary,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
